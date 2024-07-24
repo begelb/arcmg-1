@@ -6,13 +6,29 @@ from arcmg.classifier import Classifier
 from arcmg.data_for_classification import DatasetForClassification
 from arcmg.config import Config
 import yaml
+import os
+
+def accuracy(outputs, labels):
+    _, predicted = torch.max(outputs, 1)
+    correct = (predicted == labels).sum().item()
+    return correct / labels.size(0)
+
+def save_model(config, model, name):
+    model_path = os.path.join(os.getcwd(), config.model_dir)
+    if not os.path.exists(model_path):
+        os.makedirs(model_path)
+    torch.save(model, os.path.join(model_path, f'{name}.pt'))
 
 def train(config):
 
-    data = DatasetForClassification(config)
+    labeled_dataset = DatasetForClassification(config)
 
-    # Dataset and DataLoader
-    train_loader = DataLoader(data, batch_size=config.batch_size, shuffle=True)
+    train_size = int(0.8*len(labeled_dataset))
+    test_size = len(labeled_dataset) - train_size
+    train_dataset, test_dataset = torch.utils.data.random_split(labeled_dataset, [train_size, test_size])
+    
+    train_loader = DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True)
+    test_loader = DataLoader(test_dataset, batch_size=config.batch_size, shuffle=True)
 
     # Model, Loss, and Optimizer
 
@@ -23,7 +39,7 @@ def train(config):
     # Training loop
     for epoch in range(config.epochs):
         model.train()
-        running_loss = 0.0
+        train_loss = 0.0
         for i, (inputs, labels) in enumerate(train_loader):
             # Zero the parameter gradients
             optimizer.zero_grad()
@@ -37,10 +53,35 @@ def train(config):
             optimizer.step()
 
             # Print statistics
-            running_loss += loss.item()
-            if (i + 1) % 10 == 0:  # Print every 10 batches
-                print(f'Epoch [{epoch + 1}/{config.epochs}], Step [{i + 1}/{len(train_loader)}], Loss: {running_loss / 10:.4f}')
-                running_loss = 0.0
+            train_loss += loss.item()
+            #if (i + 1) % 10 == 0:  # Print every 10 batches
+
+        train_loss /= len(train_loader)
+        if epoch % 10 == 0:    
+            print(f'Epoch [{epoch + 1}/{config.epochs}], Train Loss: {train_loss:.4f}')
+
+        train_loss = 0.0
+
+        model.eval()
+        test_loss = 0.0
+        running_accuracy = 0.0
+        with torch.no_grad():
+            for i, (inputs, labels) in enumerate(test_loader):
+                outputs = model(inputs)
+                loss = criterion(outputs, labels)
+                test_loss += loss.item()
+                running_accuracy += accuracy(outputs, labels)
+                    
+            test_loss /= len(test_loader)
+            running_accuracy /= len(test_loader)
+
+            if epoch % 10 == 0:
+                print(f'Epoch [{epoch + 1}/{config.epochs}], Test Loss: {test_loss:.4f}')
+                print('Accuracy: ', f'{running_accuracy:.2f}')
+        if running_accuracy > .99:
+            break
+
+    save_model(config, model, 'simple_classifier')
 
     print('Finished Training')
 
