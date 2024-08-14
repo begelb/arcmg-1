@@ -7,6 +7,7 @@ from arcmg.data_for_classification import DatasetForClassification
 from arcmg.config import Config
 import yaml
 import os
+import csv
 
 def accuracy(outputs, labels):
     _, predicted = torch.max(outputs, 1)
@@ -18,6 +19,21 @@ def save_model(config, model, name):
     if not os.path.exists(model_path):
         os.makedirs(model_path)
     torch.save(model, os.path.join(model_path, f'{name}.pt'))
+
+def write_accuracy_to_csv(config, csv_file, train_accuracy, test_accuracy):
+    # Check if the file exists
+    file_exists = os.path.isfile(csv_file)
+    
+    # Open the CSV file in append mode
+    with open(csv_file, mode='a', newline='') as file:
+        writer = csv.writer(file)
+        
+        # If the file doesn't exist, write the header
+        if not file_exists:
+            writer.writerow(["num_attractors", "num_labels", "train_accuracy", "test_accuracy"])
+        
+        # Write the accuracy values
+        writer.writerow([config.num_attractors, config.num_labels, train_accuracy, test_accuracy])
 
 def train(config):
 
@@ -40,6 +56,7 @@ def train(config):
     for epoch in range(config.epochs):
         model.train()
         train_loss = 0.0
+        running_train_accuracy = 0.0
         for i, (inputs, labels) in enumerate(train_loader):
             # Zero the parameter gradients
             optimizer.zero_grad()
@@ -52,11 +69,16 @@ def train(config):
             loss.backward()
             optimizer.step()
 
+            # Train accuracy
+            running_train_accuracy += accuracy(outputs, labels)
+
             # Print statistics
             train_loss += loss.item()
             #if (i + 1) % 10 == 0:  # Print every 10 batches
 
         train_loss /= len(train_loader)
+        running_train_accuracy /= len(train_loader)
+
         if epoch % 10 == 0:    
             print(f'Epoch [{epoch + 1}/{config.epochs}], Train Loss: {train_loss:.4f}')
 
@@ -64,28 +86,31 @@ def train(config):
 
         model.eval()
         test_loss = 0.0
-        running_accuracy = 0.0
+        running_test_accuracy = 0.0
         with torch.no_grad():
             for i, (inputs, labels) in enumerate(test_loader):
                 outputs = model(inputs)
                 loss = criterion(outputs, labels)
                 test_loss += loss.item()
-                running_accuracy += accuracy(outputs, labels)
+                running_test_accuracy += accuracy(outputs, labels)
                     
             test_loss /= len(test_loader)
-            running_accuracy /= len(test_loader)
+            running_test_accuracy /= len(test_loader)
 
             if epoch % 10 == 0:
                 print(f'Epoch [{epoch + 1}/{config.epochs}], Test Loss: {test_loss:.4f}')
-                print('Accuracy: ', f'{running_accuracy:.2f}')
-        if running_accuracy > .99:
-            break
+                print(f'Train Accuracy: {running_train_accuracy:2f}')
+                print(f'Test Accuracy: {running_test_accuracy:2f}')
+        #if running_test_accuracy > .99:
+        #    break
 
     save_model(config, model, 'simple_classifier')
-
+    results_file = config.output_dir + 'accuracy.csv'
+    write_accuracy_to_csv(config, results_file, running_train_accuracy, running_test_accuracy)
     print('Finished Training')
 
-yaml_file = "output/pendulum/config.yaml"
+
+yaml_file = "output/pendulum_fixed/config.yaml"
 
 with open(yaml_file, mode="rb") as yaml_reader:
     configuration_file = yaml.safe_load(yaml_reader)

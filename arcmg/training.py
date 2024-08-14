@@ -138,9 +138,10 @@ class ClassifierTraining:
                 q[data_label[i]] = 1
 
             elif data_label[i] == -1:  # point without trajectory ending in an attractor
-                q[2::] = y_single_prob[0:-3]
-                q[-1] = 2/3 * sum(y_single_prob[self.num_labels-3:self.num_labels])
-                q = torch.special.softmax(q)
+                pass
+                # q[2::] = y_single_prob[0:-3]
+                # q[-1] = 2/3 * sum(y_single_prob[self.num_labels-3:self.num_labels])
+                # q = torch.special.softmax(q)
 
             
             # elif data_label[i] > 3:
@@ -222,13 +223,39 @@ class ClassifierTraining:
 
         return torch.Tensor(Q)
     
+    def classification_loss(self, forward_dict):
+        probs_x = forward_dict['probs_x']
+        probs_xnext = forward_dict['probs_xnext']
+        labels_xnext = forward_dict['labels_xnext']
+        labels_x = forward_dict['labels_x']
+        criterion = torch.nn.CrossEntropyLoss()
+        print(probs_x)
+        print('-----')
+        print(labels_x)
+        exit()
+        loss_x = criterion(probs_x, labels_x)
+        #loss_xnext = criterion(probs_xnext, labels_xnext)
+        #loss = loss_x + loss_xnext
+        return loss_x
 
     def loss_function(self, forward_dict):
         probs_x = forward_dict['probs_x']
         probs_xnext = forward_dict['probs_xnext']
         labels_xnext = forward_dict['labels_xnext']
+        labels_x = forward_dict['labels_x']
         return torch.nn.CrossEntropyLoss()(probs_x, self.q_probability_vector(probs_xnext,labels_xnext))
     
+    def accuracy(self, forward_dict):
+        probs_x = forward_dict['probs_x']
+        probs_xnext = forward_dict['probs_xnext']
+        classes_x = torch.argmax(probs_x, dim=1)
+        classes_xnext = torch.argmax(probs_xnext, dim = 1)
+        labels_xnext = forward_dict['labels_xnext']
+        labels_x = forward_dict['labels_x']
+       # a_0 =  (torch.sum(classes_x == labels_x).item() / len(classes_x)) * 100
+        a_1 = (torch.sum(classes_xnext == labels_xnext).item() / len(classes_xnext)) * 100
+        return a_1
+
     def get_optimizer(self, list_parameters):
         if self.config.optimizer == 'Adam':
             return torch.optim.Adam(list_parameters, lr=self.config.learning_rate)
@@ -268,39 +295,48 @@ class ClassifierTraining:
             self.classifier.train()
 
             # loop over the batches in the train_loadaer 
-            for i, (x, xnext, xnext_label) in enumerate(self.train_loader):
+            for i, (x, xnext, xnext_label, x_label) in enumerate(self.train_loader):
                 
                 optimizer.zero_grad()
 
                 forward_dict = self.classifier(x.to(self.device), xnext.to(self.device))
                 forward_dict['labels_xnext'] = xnext_label
+                forward_dict['labels_x'] = x_label
 
-                loss = self.loss_function(forward_dict)
+                loss = self.classification_loss(forward_dict)
 
                 loss.backward()
                 optimizer.step()
 
                 epoch_train_loss += loss.item()
                 
-                if analyze_td:
-                    self.class_order_data.append(find_class_order(self.classifier, self.config))
+                #if analyze_td:
+                #    self.class_order_data.append(find_class_order(self.classifier, self.config))
             
             epoch_train_loss /= len(self.train_loader)
             self.train_losses['loss_total'].append(epoch_train_loss)
+
+    
 
             epoch_test_loss = 0
 
             self.classifier.eval()
 
             with torch.no_grad():
-                for i, (x, xnext, xnext_label) in enumerate(self.test_loader):
+                for i, (x, xnext, xnext_label, x_label) in enumerate(self.test_loader):
                     forward_dict = self.classifier(x.to(self.device), xnext.to(self.device))
                     forward_dict['labels_xnext'] = xnext_label
-                    loss = self.loss_function(forward_dict)
+                    forward_dict['labels_x'] = x_label
+                    loss = self.classification_loss(forward_dict)
                     epoch_test_loss += loss.item()
-                
+
+                    accuracy = self.accuracy(forward_dict)
+                        
                 epoch_test_loss /= len(self.test_loader)
                 self.test_losses['loss_total'].append(epoch_test_loss)
+                accuracy /= len(self.train_loader)
+                if epoch % 10 == 0:
+                    print('Acc: ', f'{accuracy:.1f}')
 
             if self.config.scheduler == 'ReduceLROnPlateau':
                 scheduler.step(epoch_test_loss)
