@@ -32,11 +32,24 @@ class DatasetForClassification(Dataset):
         # attractor is expected to be an integer such as 0, 1, 2, ...
         return steps_to_attractor * self.num_attractors + attractor
     
+    def determine_attractor(self, tmp_attractor):
+        if self.num_attractors == 1:
+            return 0
+        if self.num_attractors == 2:
+            if tmp_attractor == 1 or tmp_attractor == 2:
+                return 1
+            else:
+                return 0
+        if self.num_attractors == 3:
+            return tmp_attractor
+    
     def __getitem__(self, idx):
         data_point = self.data[idx]
         steps_to_attractor = int(data_point[self.d])
         #print('steps to attractor: ', steps_to_attractor)
-        attractor = int(data_point[self.d + 1])
+        tmp_attractor = int(data_point[self.d + 1])
+        attractor = self.determine_attractor(tmp_attractor)
+        
         #print('attractor: ', attractor)
         if self.distinguish_attractors:
             level_set = self.distinguish_level_sets(steps_to_attractor, attractor)
