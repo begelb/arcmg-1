@@ -1,195 +1,138 @@
-from arcmg.training import ClassifierTraining
-from arcmg.config import Config
-from arcmg.data import Dataset
-from arcmg.plot import plot_classes, plot_loss, plot_classes_2D, heatmap
-from torch.utils.data import DataLoader
-from arcmg.utils import find_classes, is_bistable, penalty_submatrix
-import argparse
-import csv
 import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.utils.data import DataLoader, TensorDataset
+from arcmg.classifier import Classifier
+from arcmg.data_for_classification import DatasetForClassification
+from arcmg.config import Config
 import yaml
 import os
-from torch import nn
+import csv
+import argparse
 
-torch.autograd.set_detect_anomaly(True)
+def accuracy(outputs, labels):
+    _, predicted = torch.max(outputs, 1)
+    correct = (predicted == labels).sum().item()
+    return correct / labels.size(0)
 
-num_points_in_mesh = 1000
+def save_model(config, model, name):
+    model_path = os.path.join(os.getcwd(), config.model_dir)
+    if not os.path.exists(model_path):
+        os.makedirs(model_path)
+    torch.save(model, os.path.join(model_path, f'{name}.pt'))
 
-def transfer_learning_training(trainer, config):
-
-    transfer_steps = config.num_labels//2
-
-    for i in range(transfer_steps):
-        temp_num_labels = 3 + 2*i
-        trainer.num_labels = temp_num_labels
-
-        trainer.classifier.update_out_layer(temp_num_labels)
-
-        print(trainer.classifier)
-
-        trainer.train()
-
-        name = f"_classes{temp_num_labels}"
-        plot_classes(trainer.classifier, config, name)
-
-        trainer.classifier.freeze_layers()
-
-    trainer.classifier.unfreeze_layers()
-    trainer.train()
-
-
-
-        # trainer.num_clabels = 5
-
-        # trainer.classifier.update_out_layer(5)
-        # ###
-
-        # exit()
-
-        # trainer.classifier.freeze_layers()
-
-        # trainer.classifier.add_layers(1)
-
-        # # trainer.classifier.add_layers(2)
+def write_accuracy_to_csv(config, csv_file, train_accuracy, test_accuracy):
+    # Check if the file exists
+    file_exists = os.path.isfile(csv_file)
+    
+    # Open the CSV file in append mode
+    with open(csv_file, mode='a', newline='') as file:
+        writer = csv.writer(file)
         
-        # trainer.classifier.update_out_layer(7)
+        # If the file doesn't exist, write the header
+        if not file_exists:
+            writer.writerow(["num_attractors", "num_labels", "train_accuracy", "test_accuracy"])
+        
+        # Write the accuracy values
+        writer.writerow([config.num_attractors, config.num_labels, train_accuracy, test_accuracy])
 
-        # print(trainer.classifier)
+def train(config):
 
-        # trainer.classifier.unfreeze_layers()
+    labeled_dataset = DatasetForClassification(config)
 
+    train_size = int(0.8*len(labeled_dataset))
+    test_size = len(labeled_dataset) - train_size
+    train_dataset, test_dataset = torch.utils.data.random_split(labeled_dataset, [train_size, test_size])
+    
+    train_loader = DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True)
+    test_loader = DataLoader(test_dataset, batch_size=config.batch_size, shuffle=True)
 
-        # maxpools = [k for k, m in trainer.classifier.named_modules()]
+    # Model, Loss, and Optimizer
 
-        # print(maxpools)
+    model = Classifier(config.input_dimension, config.network_width, config.num_labels)
+    criterion = nn.CrossEntropyLoss()
+    optimizer = optim.Adam(model.parameters(), lr=config.learning_rate)
 
-        # # maxpools = [k for k, m in trainer.classifier.named_modules() 
-        # #             if type(m).__name__ == 'MaxPool2d']
+    # Training loop
+    for epoch in range(config.epochs):
+        model.train()
+        train_loss = 0.0
+        running_train_accuracy = 0.0
+        for i, (inputs, labels) in enumerate(train_loader):
+            # Zero the parameter gradients
+            optimizer.zero_grad()
 
-        # trainer.classifier.hidden_layers = nn.Sequential(trainer.classifier.hidden_layers, trainer.classifier.hidden_layers)
-        # # trainer.classifier.hidden_layers.fc2 = nn.Sequential()
+            # Forward pass
+            outputs = model(inputs)
+            loss = criterion(outputs, labels)
 
-        # # trainer.classifier.hidden_layers.linear_2 = nn.Sequential()
+            # Backward pass and optimize
+            loss.backward()
+            optimizer.step()
 
-        # trainer.classifier.hidden_layers.linear_2 = nn.Sequential(
-        #     nn.Linear(32, 32),  # New layer
-        #     nn.ReLU(),
-        #     nn.Linear(32, 7),  # New layer
-        #     nn.ReLU()
-        # )
-        # print(trainer.classifier)
-    return 
+            # Train accuracy
+            running_train_accuracy += accuracy(outputs, labels)
+
+            # Print statistics
+            train_loss += loss.item()
+            #if (i + 1) % 10 == 0:  # Print every 10 batches
+
+        train_loss /= len(train_loader)
+        running_train_accuracy /= len(train_loader)
+
+        if epoch % 10 == 0:    
+            print(f'Epoch [{epoch + 1}/{config.epochs}], Train Loss: {train_loss:.4f}')
+
+        train_loss = 0.0
+
+        model.eval()
+        test_loss = 0.0
+        running_test_accuracy = 0.0
+        with torch.no_grad():
+            for i, (inputs, labels) in enumerate(test_loader):
+                outputs = model(inputs)
+                loss = criterion(outputs, labels)
+                test_loss += loss.item()
+                running_test_accuracy += accuracy(outputs, labels)
+                    
+            test_loss /= len(test_loader)
+            running_test_accuracy /= len(test_loader)
+
+            if epoch % 10 == 0:
+                print(f'Epoch [{epoch + 1}/{config.epochs}], Test Loss: {test_loss:.4f}')
+                print(f'Train Accuracy: {running_train_accuracy:2f}')
+                print(f'Test Accuracy: {running_test_accuracy:2f}')
+        #if running_test_accuracy > .99:
+        #    break
+
+    save_model(config, model, 'simple_classifier')
+    results_file = config.output_dir + 'accuracy.csv'
+    write_accuracy_to_csv(config, results_file, running_train_accuracy, running_test_accuracy)
+    #print('Finished Training')
 
 def main(args, yaml_file):
-    ###
-    # yaml_file = "config/rampfn.yaml"
     yaml_file_path = args.config_dir
 
     with open(os.path.join(yaml_file_path, yaml_file), mode="rb") as yaml_reader:
         configuration_file = yaml.unsafe_load(yaml_reader)
 
     config = Config(configuration_file)
-    # config.check_types()
 
     config.output_dir = os.path.join(os.getcwd(),config.output_dir)
 
-    dynamics_dataset = Dataset(config)
-
-    dynamics_train_size = int(0.8*len(dynamics_dataset))
-    dynamics_test_size = len(dynamics_dataset) - dynamics_train_size
-    dynamics_train_dataset, dynamics_test_dataset = torch.utils.data.random_split(dynamics_dataset, [dynamics_train_size, dynamics_test_size])
-    
-    dynamics_train_loader = DataLoader(dynamics_train_dataset, batch_size=config.batch_size, shuffle=True)
-    dynamics_test_loader = DataLoader(dynamics_test_dataset, batch_size=config.batch_size, shuffle=True)
-
-    if config.verbose:
-        print("Train size: ", len(dynamics_train_dataset))
-        print("Test size: ", len(dynamics_test_dataset))
-
-    loaders = {
-        'train_dynamics': dynamics_train_loader,
-        'test_dynamics': dynamics_test_loader,
-    }
-
-    # save test_loss to a csv file
-    with open(config.output_dir + 'result.csv', 'w', newline='') as file:
-        writer = csv.writer(file)
-
-        trainer = ClassifierTraining(loaders, config)
-
-        print(trainer.classifier)
-
-        if not args.only_plot:
-
-            if args.transfer_learning:
-                transfer_learning_training(trainer, config)
-
-            else:
-                trainer.train()
-            trainer.save_model('classifier') 
-
-        # if config.dropout != 0:  # after training with dropout, set it to zero and train more
-        #     name_before_dropout_zero = "_dropout_not_0"
-        #     plot_classes(trainer.classifier, config, name_before_dropout_zero)
-
-        #     for _, module_in_hidden_out in trainer.classifier.named_children():
-        #         for name, module in module_in_hidden_out.named_children():
-        #             if isinstance(module,torch.nn.Dropout):
-        #                 setattr(module_in_hidden_out, name, nn.Dropout(0))
- 
-        #     print(trainer.classifier)
-        #     trainer.train()
-
-
-
-        
-
-        trainer.load_model('classifier')
-
-        plot_classes(trainer.classifier, config)  
-        plot_classes_2D(trainer.classifier, config)
-        heatmap(trainer.classifier, config)          
-
-        train_losses = trainer.train_losses['loss_total']
-        test_losses = trainer.test_losses['loss_total']
-        plot_loss(config, train_losses, test_losses)
-
-        # class_set = find_classes(trainer.classifier, config, num_points_in_mesh)
-        # num_classes_found = len(class_set)
-
-        # writer.writerow(["class_set", "num_classes_found", "is_bistable", "final_train_loss", "final_test_loss"])
-        # writer.writerow([class_set, num_classes_found, is_bistable(class_set), train_losses[-1], test_losses[-1]])
-
-    if config.analyze_train_dynamics:
-        with open(config.output_dir + 'train_dynamics.csv', 'w', newline='') as file:
-            writer = csv.writer(file)
-
-            class_order_data = trainer.class_order_data
-
-            #print('class order data: ', class_order_data)
-
-            for ordering in class_order_data:
-                writer.writerow(ordering)
-
+    train(config)
 
 if __name__ == "__main__":
 
 # 
-    yaml_file_path = os.getcwd() + "/output/pendulum"
-
-    only_plot = True
-
+    yaml_file_path = os.getcwd() + "/output/pendulum_fixed"
 
     parser = argparse.ArgumentParser()
-    #  parser.add_argument('--job_index',help='Job index',type=int,default=0)
     parser.add_argument('--config_dir',help='Directory of config files',type=str,default=yaml_file_path)
     parser.add_argument('--config',help='Config file inside config_dir',type=str,default="config.yaml")
     parser.add_argument('--transfer_learning',help='Config file inside config_dir',action='store_true')
-    parser.add_argument('--only_plot',help='Load model and plot',type=bool,default=only_plot)
     #  parser.add_argument('--verbose',help='Print training output',action='store_true')
 
     args = parser.parse_args()
-
-    # args.transfer_learning = True
-
+    
     main(args, args.config) 
