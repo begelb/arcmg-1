@@ -3,6 +3,31 @@ import torch
 import os
 import numpy as np
 
+class DatasetForRegression(Dataset):
+    def __init__(self, config):
+        self.d = config.input_dimension
+        X=[]
+
+        for f in os.listdir(config.data_file):
+            # load data into a numpy array
+            data = np.loadtxt(os.path.join(config.data_file, f), delimiter=',')
+            X.append(data)
+            
+        self.X = np.vstack(X)
+            
+        self.data = torch.from_numpy(self.X).float()
+
+    def __len__(self):
+        return len(self.data)
+    
+    def __getitem__(self, idx):
+        data_point = self.data[idx]
+
+        labeled_point_pair = [data_point[:self.d],
+                              data_point[4]]
+
+        return labeled_point_pair
+
 class DatasetForClassification(Dataset):
     def __init__(self, config):
         

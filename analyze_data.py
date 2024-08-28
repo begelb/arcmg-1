@@ -62,24 +62,3 @@ print('--------------------------')
 check_distribution(new_folder_path)
 print('-----')
 print(num_copied_labels_dict)
-
-# num_labels = 5
-# num_label_dict = dict()
-# num_label_dict = {i: 0 for i in range(num_labels)}
-# total_amt_data = 0
-
-# for filename in os.listdir(folder_path):
-#     file_path = os.path.join(folder_path, filename)
-#     if os.path.isfile(file_path):
-#         with open(file_path, newline='') as f:
-#             reader = csv.reader(f)
-#             next(reader) # skip first row
-#             for row in reader:
-#                 total_amt_data += 1
-#                 label = get_label(row)
-#                 num_label_dict[label] += 1
-
-# for i in range(num_labels):
-#     ratio = num_label_dict[i]/total_amt_data
-#     print(f'Label {i}: {ratio}')
-    

@@ -72,7 +72,7 @@ def main(args):
 
 if __name__ == "__main__":
 
-    step = 5
+    step = 7
     data_dir = os.getcwd()+ "/data/pendulum_lqr1k"
     # args.att_file = os.getcwd()+ "/pendulum_lqr1k_success.txt"
     att_file = ''

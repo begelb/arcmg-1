@@ -38,6 +38,7 @@ class Dataset(Dataset):
         # Should these variables be moved into __getitem__? 
         
         self.d = config.input_dimension
+        self.num_labels = config.num_labels
         # self.attractor_list = config.attractor_list
         X=[]
         Y=[]
@@ -58,19 +59,23 @@ class Dataset(Dataset):
         self.Y = np.vstack(Y)
         assert len(self.X) == len(self.Y), "X and Y must have the same length"
 
-        self.data = np.concatenate((self.X,self.Y), axis=1)
+        self.data = np.concatenate((self.X,self.Y), axis=1) # the first d columns correspond to X and the last d columns correspond to Y
         self.data = torch.from_numpy(self.data).float()
 
 
 
     def __len__(self):
         return len(self.data)
+    
+    def truncate_labels(self, label):
+        return min(label, self.num_labels - 1)
 
     def __getitem__(self, idx):
         data_point = self.data[idx]
         labeled_point_pair = [data_point[:self.d], 
                               data_point[self.d+1:-1], 
-                              int(data_point[-1])]
+                              self.truncate_labels(int(data_point[-1])),
+                              self.truncate_labels(int(data_point[self.d]))]
         # labeled_point_pair = [torch.tensor(data_point[:self.d]), 
         #                       torch.tensor(data_point[self.d+1:-1]), 
         #                       int(data_point[-1])]

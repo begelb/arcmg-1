@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
 from arcmg.classifier import Classifier
-from arcmg.data_for_classification import DatasetForClassification
+from arcmg.data_for_supervised_learning import DatasetForClassification
 from arcmg.config import Config
 import yaml
 import os

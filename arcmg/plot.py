@@ -406,23 +406,14 @@ def plot_classes_2D(model, config, name = ""):
     # Z = Z_max[1]
 
     prob_vector_maxK =torch.topk(Z, 2)
-    threshold = 0.9
+    threshold = 0.90
     for i,z in enumerate(prob_vector_maxK[0]):
         if z[0] < threshold and prob_vector_maxK[1][i][0]%2 != prob_vector_maxK[1][i][1]%2:
             prob_vector_maxK[1][i][0] = config.num_labels - 1
     Z = prob_vector_maxK[1][:,0]
-    
-
-
-    
-
-
-
-
-
 
     # Z = torch.argmax(Z, dim=1)
-    
+    scatter_plots = []
     X = X.detach().numpy()
     for i in range(num_classes):
         clr = matplotlib.colors.to_hex(cmap(cmap_norm(i)))
@@ -436,7 +427,8 @@ def plot_classes_2D(model, config, name = ""):
         X_temp = np.array(X_temp)
         if len(X_temp) == 0:
             continue
-        plt.scatter(X_temp[:,0], X_temp[:,1], s=1, marker=".", label="class:"+str(i), c=clr)
+        scatter = plt.scatter(X_temp[:,0], X_temp[:,1], s=1, marker=".", label="class:"+str(i), c=clr)
+        scatter_plots.append(scatter)
 
 
     # fig, ax = plt.subplots()
@@ -446,7 +438,15 @@ def plot_classes_2D(model, config, name = ""):
 
     # # ax.xlabel('x_0')
     # # ax.ylabel('x_1')
-    plt.legend()
+    # Custom legend handles with increased marker size
+        
+        # Create custom legend handles
+    legend_handles = [plt.Line2D([0], [0], marker='.', color='w', markerfacecolor=scatter.get_facecolors()[0], markersize=30) for scatter in scatter_plots]
+    legend_labels = [scatter.get_label() for scatter in scatter_plots]
+
+    # Add legend with custom handles
+    plt.legend(legend_handles, legend_labels, title='Legend')
+
     plt.title(f'Classes')
 
     plt.savefig(f'{config.output_dir}plot{name}.png')
