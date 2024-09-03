@@ -30,7 +30,9 @@ def main(args, yaml_file):
     if config.method == 'classification':
         dynamics_dataset = DatasetForClassification(config)
     elif config.method == 'regression':
-        dynamics_dataset = DatasetForRegression(config)
+        dynamics_dataset = DatasetForRegression(config, train = True)
+
+    dataset_for_error_metrics = DatasetForRegression(config, train = False)
 
     dynamics_train_size = int(0.8*len(dynamics_dataset))
     dynamics_test_size = len(dynamics_dataset) - dynamics_train_size
@@ -38,6 +40,7 @@ def main(args, yaml_file):
     
     dynamics_train_loader = DataLoader(dynamics_train_dataset, batch_size=config.batch_size, shuffle=True)
     dynamics_test_loader = DataLoader(dynamics_test_dataset, batch_size=config.batch_size, shuffle=True)
+    error_metrics_loader = DataLoader(dataset_for_error_metrics, batch_size=dataset_for_error_metrics.__len__(), shuffle=False)
 
     if config.verbose:
         print("Train size: ", len(dynamics_train_dataset))
@@ -46,6 +49,7 @@ def main(args, yaml_file):
     loaders = {
         'train_dynamics': dynamics_train_loader,
         'test_dynamics': dynamics_test_loader,
+        'error_metrics': error_metrics_loader
     }
 
     # save test_loss to a csv file
@@ -64,7 +68,7 @@ def main(args, yaml_file):
             elif config.method == 'regression':
                 trainer.save_model('regression')
 
-        trainer.load_model('classifier')
+       # trainer.load_model('classifier')
 
         # plot_classes(trainer.model, config)  
         # plot_classes_2D(trainer.model, config)
@@ -84,7 +88,7 @@ def main(args, yaml_file):
 if __name__ == "__main__":
 
 # 
-    yaml_file_path = os.getcwd() + "/output/regression_20"
+    yaml_file_path = os.getcwd() + "/output/pendulum_1k"
 
     only_plot = False
 

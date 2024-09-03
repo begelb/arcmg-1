@@ -31,6 +31,7 @@ class SupervisedTraining:
         self.model.to(self.device)
         self.train_loader = loaders['train_dynamics']
         self.test_loader = loaders['test_dynamics']
+        self.error_loader = loaders['error_metrics']
         self.reset_losses()
 
     def reset_losses(self):
@@ -53,6 +54,28 @@ class SupervisedTraining:
         _, predicted = torch.max(outputs, 1)
         correct = (predicted == labels).sum().item()
         return correct / labels.size(0)
+    
+    # Here it is assumed that anything labeled positive is in one ROA and anything labeled negative is in another ROA
+    # Recall then is the accuracy with respect to this binary classification as positive or negative
+    def recall(self, predictions, labels):
+        if self.method == 'regression':
+            same_sign = torch.sign(predictions) == torch.sign(labels)
+            recall = same_sign.sum().item()
+
+        if self.method == 'classification':
+            raise Exception('Recall not implemented')
+
+        recall /= len(predictions)
+
+        return recall
+    
+    def get_error(self):
+        with torch.no_grad():
+            for inputs, labels in self.error_loader:
+                print('inputs ', inputs)
+                outputs = self.get_outputs(inputs)
+                error = self.recall(outputs, labels)
+        return error
 
     # to do: streamline this using class variables
     def write_accuracy_to_csv(self, config, csv_file, train_accuracy, test_accuracy):
@@ -145,7 +168,7 @@ class SupervisedTraining:
 
                 # Train accuracy
                 if self.method == 'classification':
-                    running_train_accuracy += accuracy(outputs, labels)
+                    running_train_accuracy += self.accuracy(outputs, labels)
 
                 epoch_train_loss += loss.item()
 
@@ -158,11 +181,12 @@ class SupervisedTraining:
 
             if self.config.verbose:
                 if epoch % 10 == 0:    
-                    print(f'Epoch [{epoch + 1}/{self.config.epochs}], Train Loss: {self.train_loss:.4f}')
+                    print(f'Epoch [{epoch + 1}/{self.config.epochs}], Train Loss: {epoch_train_loss:.4f}')
 
             epoch_test_loss = 0.0
             self.model.eval()
             running_test_accuracy = 0.0
+            running_precision = 0.0
 
             with torch.no_grad():
                 for i, (inputs, labels) in enumerate(self.test_loader):
@@ -173,12 +197,18 @@ class SupervisedTraining:
 
                     if self.method == 'classification':
                         running_test_accuracy += self.accuracy(outputs, labels)
+                    
+                    if self.method == 'regression':
+                        running_precision += self.recall(outputs, labels)
                         
                 epoch_test_loss /= len(self.test_loader)
                 self.test_losses['loss_total'].append(epoch_test_loss)
 
                 if self.method == 'classification':
-                    running_test_accuracy /= len(self.train_loader)
+                    running_test_accuracy /= len(self.test_loader)
+
+                if self.method == 'regression':
+                    running_precision /= len(self.test_loader)
 
                 if self.config.verbose:
                     if epoch % 10 == 0:
@@ -186,6 +216,8 @@ class SupervisedTraining:
                         if self.method == 'classification':
                             print(f'Train Accuracy: {running_train_accuracy:2f}')
                             print(f'Test Accuracy: {running_test_accuracy:2f}')
+                        if self.method == 'regression':
+                            print(f'Precision: {running_precision:2f}')
 
             if self.config.scheduler == 'ReduceLROnPlateau':
                 scheduler.step(epoch_test_loss)
@@ -194,9 +226,15 @@ class SupervisedTraining:
 
             if epoch >= patience:
                 if np.mean(self.test_losses['loss_total'][-patience:]) > np.mean(self.test_losses['loss_total'][-patience-1:-1]):
+                    # put recall here 
+                    error = self.get_error()
+                    print(f'Final error: {error:2f}')
                     return epoch_test_loss
+                
             
             # if self.config.verbose:
             #     print(f"Epoch: {epoch}, Train Loss: {epoch_train_loss}, Test Loss: {epoch_test_loss}")
 
+        error = self.get_error()
+        print(f'Final error: {error:2f}')
         #return self.train_losses['loss_total'], self.test_losses['loss_total']

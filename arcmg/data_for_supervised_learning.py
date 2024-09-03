@@ -4,14 +4,20 @@ import os
 import numpy as np
 
 class DatasetForRegression(Dataset):
-    def __init__(self, config):
+    def __init__(self, config, train):
         self.d = config.input_dimension
         X=[]
 
-        for f in os.listdir(config.data_file):
-            # load data into a numpy array
-            data = np.loadtxt(os.path.join(config.data_file, f), delimiter=',')
-            X.append(data)
+        if train:
+            for f in os.listdir(config.data_file):
+                # load data into a numpy array
+                data = np.loadtxt(os.path.join(config.data_file, f), delimiter=',')
+                X.append(data)
+        else:
+            for f in os.listdir(config.data_file_test):
+                # load data into a numpy array
+                data = np.loadtxt(os.path.join(config.data_file_test, f), delimiter=',')
+                X.append(data)
             
         self.X = np.vstack(X)
             
