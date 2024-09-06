@@ -302,7 +302,7 @@ class SupervisedTraining:
                     self.update_performance_metrics(performance_metrics, epoch_test_loss, epoch_train_loss)
                     if self.config.verbose:
                         for key, value in performance_metrics.items():
-                            print(f"{key}: {value.item():.6f}")
+                            print(f"{key}: {value:.4f}")
                     return performance_metrics
                 
             
@@ -314,6 +314,6 @@ class SupervisedTraining:
         
         if self.config.verbose:
             for key, value in performance_metrics.items():
-                print(f"{key}: {value:.2f}")
+                print(f"{key}: {value:.4f}")
             return performance_metrics
         #return self.train_losses['loss_total'], self.test_losses['loss_total']
