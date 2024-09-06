@@ -55,27 +55,93 @@ class SupervisedTraining:
         correct = (predicted == labels).sum().item()
         return correct / labels.size(0)
     
+    def get_bins(self):
+        data = DatasetForRegression(self.config, train = True)
+        data_loader = DataLoader(data, batch_size=data.__len__(), shuffle=False)
+
+        with torch.no_grad():
+            for inputs, labels in data_loader:
+                unique_labels = torch.unique(labels)
+            
+            unique_label_list = unique_labels.tolist()
+            unique_label_list.sort()
+            # Here it is assumed that the bins are equally spaced apart, except for the bins closest to zero
+            # WLOG, we can compute the difference between the first and second bins to get a general radius
+            radius = abs(unique_label_list[1]-unique_label_list[0])
+
+            return unique_label_list, radius
+        
+    def closest_bin(self, unique_label_list, new_number):
+        closest_bin = min(unique_label_list, key=lambda x: abs(x - new_number))
+        return closest_bin
+    
+    def closest_bin_tensor(self, unique_label_list, predictions):
+        unique_label_tensor = torch.tensor(unique_label_list, dtype=predictions.dtype)
+        
+        # Find the index of the closest bin for each prediction
+        diffs = torch.abs(predictions.unsqueeze(-1) - unique_label_tensor)
+        indices = diffs.argmin(dim=-1)
+        
+        # Return the corresponding closest bins
+        closest_bins = unique_label_tensor[indices]
+        return closest_bins
+    
+    def accuracy_with_discretization(self, predictions, labels):
+        unique_label_list, radius = self.get_bins()
+        closest_bins = self.closest_bin_tensor(unique_label_list, predictions)
+        matches = closest_bins == labels
+        accuracy = matches.float().mean().item()
+        return accuracy
+
     # Here it is assumed that anything labeled positive is in one ROA and anything labeled negative is in another ROA
     # Recall then is the accuracy with respect to this binary classification as positive or negative
-    def recall(self, predictions, labels):
+    def get_performance_metrics_dict(self, predictions, labels):
         if self.method == 'regression':
-            same_sign = torch.sign(predictions) == torch.sign(labels)
-            recall = same_sign.sum().item()
+            accuracy = self.accuracy_with_discretization(predictions, labels)
+
+            true_pos = torch.sign(labels) > 0
+            num_true_pos = true_pos.sum().item()
+            num_true_neg = len(labels) - num_true_pos
+
+            predicted_pos = torch.sign(predictions) > 0
+            num_predicted_pos = predicted_pos.sum().item()
+            num_predicted_neg = len(predictions) - num_predicted_pos
+
+            # For positive labels
+            pos_sign_match = (torch.sign(labels) > 0) & (torch.sign(predictions) == torch.sign(labels))
+            num_pos_sign_match = pos_sign_match.sum().item()
+
+            # For negative labels
+            neg_sign_match = (torch.sign(labels) < 0) & (torch.sign(predictions) == torch.sign(labels))
+            num_neg_sign_match = neg_sign_match.sum().item()
+
+            precision_success_att = num_pos_sign_match / num_predicted_pos
+            precision_failure_att = num_neg_sign_match / num_predicted_neg
+            recall_success_att = num_pos_sign_match / num_true_pos
+            recall_failure_att = num_neg_sign_match / num_true_neg
+
+            performance_metrics = {
+            'accuracy': accuracy,
+            'precision_success_att': precision_success_att,
+            'precision_failure_att': precision_failure_att,
+            'recall_success_att': recall_success_att,
+            'recall_failure_att': recall_failure_att
+            }
+            
+            return performance_metrics
 
         if self.method == 'classification':
             raise Exception('Recall not implemented')
-
-        recall /= len(predictions)
-
-        return recall
     
-    def get_error(self):
+    def get_performance_metrics(self):
         with torch.no_grad():
             for inputs, labels in self.error_loader:
-                print('inputs ', inputs)
                 outputs = self.get_outputs(inputs)
-                error = self.recall(outputs, labels)
-        return error
+                performance_metrics = self.get_performance_metrics_dict(outputs, labels)
+        return performance_metrics
+    
+    # def write_performance_metrics(self, config):
+        
 
     # to do: streamline this using class variables
     def write_accuracy_to_csv(self, config, csv_file, train_accuracy, test_accuracy):
@@ -140,6 +206,11 @@ class SupervisedTraining:
         elif self.method == 'regression':
             outputs = self.model(inputs).squeeze()
         return outputs
+    
+    def update_performance_metrics(self, performance_metrics, test_loss, train_loss):
+        performance_metrics['test_loss'] = float(test_loss)
+        performance_metrics['train_loss'] = float(train_loss)
+      #  return performance_metrics
 
     def train(self):
         epochs = self.config.epochs
@@ -198,8 +269,8 @@ class SupervisedTraining:
                     if self.method == 'classification':
                         running_test_accuracy += self.accuracy(outputs, labels)
                     
-                    if self.method == 'regression':
-                        running_precision += self.recall(outputs, labels)
+                    # if self.method == 'regression':
+                    #     running_precision += self.recall(outputs, labels)
                         
                 epoch_test_loss /= len(self.test_loader)
                 self.test_losses['loss_total'].append(epoch_test_loss)
@@ -207,8 +278,8 @@ class SupervisedTraining:
                 if self.method == 'classification':
                     running_test_accuracy /= len(self.test_loader)
 
-                if self.method == 'regression':
-                    running_precision /= len(self.test_loader)
+                # if self.method == 'regression':
+                #     running_precision /= len(self.test_loader)
 
                 if self.config.verbose:
                     if epoch % 10 == 0:
@@ -216,8 +287,8 @@ class SupervisedTraining:
                         if self.method == 'classification':
                             print(f'Train Accuracy: {running_train_accuracy:2f}')
                             print(f'Test Accuracy: {running_test_accuracy:2f}')
-                        if self.method == 'regression':
-                            print(f'Precision: {running_precision:2f}')
+                        # if self.method == 'regression':
+                        #     print(f'Precision: {running_precision:2f}')
 
             if self.config.scheduler == 'ReduceLROnPlateau':
                 scheduler.step(epoch_test_loss)
@@ -227,14 +298,22 @@ class SupervisedTraining:
             if epoch >= patience:
                 if np.mean(self.test_losses['loss_total'][-patience:]) > np.mean(self.test_losses['loss_total'][-patience-1:-1]):
                     # put recall here 
-                    error = self.get_error()
-                    print(f'Final error: {error:2f}')
-                    return epoch_test_loss
+                    performance_metrics = self.get_performance_metrics()
+                    self.update_performance_metrics(performance_metrics, epoch_test_loss, epoch_train_loss)
+                    if self.config.verbose:
+                        for key, value in performance_metrics.items():
+                            print(f"{key}: {value.item():.6f}")
+                    return performance_metrics
                 
             
             # if self.config.verbose:
             #     print(f"Epoch: {epoch}, Train Loss: {epoch_train_loss}, Test Loss: {epoch_test_loss}")
 
-        error = self.get_error()
-        print(f'Final error: {error:2f}')
+        performance_metrics = self.get_performance_metrics()
+        self.update_performance_metrics(performance_metrics, epoch_test_loss, epoch_train_loss)
+        
+        if self.config.verbose:
+            for key, value in performance_metrics.items():
+                print(f"{key}: {value:.2f}")
+            return performance_metrics
         #return self.train_losses['loss_total'], self.test_losses['loss_total']

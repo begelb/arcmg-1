@@ -62,11 +62,17 @@ def main(args, yaml_file):
 
         if not args.only_plot:
 
-            trainer.train()
+            performance_metrics = trainer.train()
             if config.method == 'classification':
                 trainer.save_model('sup_classifier')
             elif config.method == 'regression':
                 trainer.save_model('regression')
+
+            # Write the header (column names)
+            writer.writerow(performance_metrics.keys())
+            
+            # Write the first row (values)
+            writer.writerow(performance_metrics.values())
 
        # trainer.load_model('classifier')
 
