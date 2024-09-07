@@ -8,7 +8,7 @@ class Config:
 
     def auto_add_features(self):
         """automatically add num_label, optimizer, scheduler"""
-        self.num_attractors = len(self.attractor_list)
+       # self.num_attractors = len(self.attractor_list)
         if not hasattr(self, 'dropout'):
             self.dropout = 0
         if not hasattr(self, 'optimizer'):

@@ -9,14 +9,14 @@ plot_mistakes = False
 num_labels = 20
 num_attractors = 2
 #file_name = f'{num_attractors}_att_{num_labels}_classes_model'
-file_name = 'inverted_normalized_level_sets'
+file_name = 'regression_model'
 
 # Define the path to the new balanced folder
 #system = f'pendulum_fixed_{num_attractors}att_{num_labels}_labels'
-system = 'regression_20_corrected'
-data_folder = f'data/{system}'
+system = 'pendulum_1k'
+data_folder = f'experiments/data/{system}'
 
-classifier_path = f'output/{system}/models/simple_classifier.pt'
+classifier_path = f'output/{system}/models/regression.pt'
 
 # Load the classifier
 # classifier = torch.load(classifier_path)
@@ -82,12 +82,18 @@ def get_label(row, num_labels):
 
 def make_figure(classification, plotting_data):
 # Create a scatter plot
-    fig = plt.figure(figsize=(10, 6))
+   # fig = plt.figure(figsize=(10, 6))
+    fig = plt.figure(figsize=(8,10))
     ax = fig.add_subplot(111)
 
     if plotting_data:
         scatterx, scattery, predictions = get_data(data_folder)
     else:
+        classifier_path = f'output/{system}/models/regression.pt'
+
+        # Load the classifier
+        classifier = torch.load(classifier_path)
+        classifier.eval()
         scatterx, scattery, predictions = get_scatter_lists(classifier, 200, classification)
 
     if classification:
@@ -98,17 +104,17 @@ def make_figure(classification, plotting_data):
         cbar_ticks = np.linspace(-1, 1, 11).tolist()
         print(cbar_ticks)
 
-    scatter = ax.scatter(scatterx, scattery, marker ='o', s = 6, cmap = 'viridis', c = predictions, alpha = 1)
+    scatter = ax.scatter(scatterx, scattery, marker ='o', s = 6, cmap = 'rainbow', c = predictions, alpha = 1)
     cbar = fig.colorbar(scatter, orientation = 'horizontal', fraction=0.05, pad=.13, format="%0.2f")
     
     if plotting_data:
         plt.title(f'Data: Pendulum LQR')
     else:
-        plt.title(f'Learned Classes: Pendulum LQR')
+        plt.title(f'Pendulum LQR 1K Trajectories, Regression')
 
     plt.grid(True)
     plt.savefig(file_name)
     plt.show()
 
-make_figure(classification = False, plotting_data = True)
+make_figure(classification = False, plotting_data = False)
 print('Done')

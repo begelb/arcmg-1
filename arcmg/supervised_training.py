@@ -12,14 +12,15 @@ from arcmg.data_for_supervised_learning import DatasetForClassification, Dataset
 import csv
 
 
-# to do: make this just depend on config
 # start with dropout after patience turn off dropout
 class SupervisedTraining:
     def __init__(self, loaders, config):
         self.config = config
-        self.num_labels = self.config.num_labels
+        # Would it be better to call these variables later when necessary as e.g. self.config.num_labels?
         self.lr = self.config.learning_rate
         self.method = self.config.method
+
+        # Initialize model
 
         if self.method == 'classification':
             self.model = Classifier(config.input_dimension, config.network_width, config.num_labels)
@@ -31,7 +32,7 @@ class SupervisedTraining:
         self.model.to(self.device)
         self.train_loader = loaders['train_dynamics']
         self.test_loader = loaders['test_dynamics']
-        self.error_loader = loaders['error_metrics']
+        self.error_loader = loaders['performance_metrics']
         self.reset_losses()
 
     def reset_losses(self):
@@ -50,11 +51,13 @@ class SupervisedTraining:
             os.makedirs(model_path)
         self.model = torch.load(os.path.join(model_path, f'{name}.pt'))
 
+    ''' Classification accuracy '''
     def accuracy(self, outputs, labels):
         _, predicted = torch.max(outputs, 1)
         correct = (predicted == labels).sum().item()
         return correct / labels.size(0)
     
+    ''' Calculate the bins of the targets '''
     def get_bins(self):
         data = DatasetForRegression(self.config, train = True)
         data_loader = DataLoader(data, batch_size=data.__len__(), shuffle=False)
@@ -70,22 +73,23 @@ class SupervisedTraining:
             radius = abs(unique_label_list[1]-unique_label_list[0])
 
             return unique_label_list, radius
-        
+    
+    ''' Find the closest bin given a number and a list of the bins/labels '''
     def closest_bin(self, unique_label_list, new_number):
         closest_bin = min(unique_label_list, key=lambda x: abs(x - new_number))
         return closest_bin
     
+    ''' Find the closest bins given a tensor of predictions and a list of the bins/labels'''
     def closest_bin_tensor(self, unique_label_list, predictions):
         unique_label_tensor = torch.tensor(unique_label_list, dtype=predictions.dtype)
         
-        # Find the index of the closest bin for each prediction
         diffs = torch.abs(predictions.unsqueeze(-1) - unique_label_tensor)
         indices = diffs.argmin(dim=-1)
         
-        # Return the corresponding closest bins
         closest_bins = unique_label_tensor[indices]
         return closest_bins
     
+    # To do: This seems to be off by a factor of 1,000 when reading this I think it should be scaled by 100? 
     def accuracy_with_discretization(self, predictions, labels):
         unique_label_list, radius = self.get_bins()
         closest_bins = self.closest_bin_tensor(unique_label_list, predictions)
@@ -94,7 +98,6 @@ class SupervisedTraining:
         return accuracy
 
     # Here it is assumed that anything labeled positive is in one ROA and anything labeled negative is in another ROA
-    # Recall then is the accuracy with respect to this binary classification as positive or negative
     def get_performance_metrics_dict(self, predictions, labels):
         if self.method == 'regression':
             accuracy = self.accuracy_with_discretization(predictions, labels)
@@ -107,11 +110,9 @@ class SupervisedTraining:
             num_predicted_pos = predicted_pos.sum().item()
             num_predicted_neg = len(predictions) - num_predicted_pos
 
-            # For positive labels
             pos_sign_match = (torch.sign(labels) > 0) & (torch.sign(predictions) == torch.sign(labels))
             num_pos_sign_match = pos_sign_match.sum().item()
 
-            # For negative labels
             neg_sign_match = (torch.sign(labels) < 0) & (torch.sign(predictions) == torch.sign(labels))
             num_neg_sign_match = neg_sign_match.sum().item()
 
@@ -140,31 +141,28 @@ class SupervisedTraining:
                 performance_metrics = self.get_performance_metrics_dict(outputs, labels)
         return performance_metrics
     
-    # def write_performance_metrics(self, config):
-        
-
     # to do: streamline this using class variables
-    def write_accuracy_to_csv(self, config, csv_file, train_accuracy, test_accuracy):
-        # Check if the file exists
-        file_exists = os.path.isfile(csv_file)
+    # def write_accuracy_to_csv(self, config, csv_file, train_accuracy, test_accuracy):
+    #     # Check if the file exists
+    #     file_exists = os.path.isfile(csv_file)
         
-        # Open the CSV file in append mode
-        with open(csv_file, mode='a', newline='') as file:
-            writer = csv.writer(file)
+    #     # Open the CSV file in append mode
+    #     with open(csv_file, mode='a', newline='') as file:
+    #         writer = csv.writer(file)
             
-            # If the file doesn't exist, write the header
-            if not file_exists:
-                writer.writerow(["num_attractors", "num_labels", "train_accuracy", "test_accuracy"])
+    #         # If the file doesn't exist, write the header
+    #         if not file_exists:
+    #             writer.writerow(["num_attractors", "num_labels", "train_accuracy", "test_accuracy"])
             
-            # Write the accuracy values
-            writer.writerow([config.num_attractors, config.num_labels, train_accuracy, test_accuracy])
+    #         # Write the accuracy values
+    #         writer.writerow([config.num_attractors, config.num_labels, train_accuracy, test_accuracy])
 
-    def get_dataset(self):
-        if self.method == 'classification':
-            labeled_dataset = DatasetForClassification(self.config)
-        elif self.method == 'regression':
-             labeled_dataset = DatasetForRegression(self.config)
-        return labeled_dataset
+    # def get_dataset(self):
+    #     if self.method == 'classification':
+    #         labeled_dataset = DatasetForClassification(self.config)
+    #     elif self.method == 'regression':
+    #          labeled_dataset = DatasetForRegression(self.config)
+    #     return labeled_dataset
     
     def get_loss_criterion(self):
         if self.method == 'classification':
@@ -173,12 +171,12 @@ class SupervisedTraining:
             criterion = nn.MSELoss()
         return criterion
 
-    def loss_function(self, forward_dict):
-        probs_x = forward_dict['probs_x']
-        probs_xnext = forward_dict['probs_xnext']
-        labels_xnext = forward_dict['labels_xnext']
-        labels_x = forward_dict['labels_x']
-        return torch.nn.CrossEntropyLoss()(probs_x, self.q_probability_vector(probs_xnext,labels_xnext))
+    # def loss_function(self, forward_dict):
+    #     probs_x = forward_dict['probs_x']
+    #     probs_xnext = forward_dict['probs_xnext']
+    #     labels_xnext = forward_dict['labels_xnext']
+    #     labels_x = forward_dict['labels_x']
+    #     return torch.nn.CrossEntropyLoss()(probs_x, self.q_probability_vector(probs_xnext,labels_xnext))
 
     def get_optimizer(self, list_parameters):
         if self.config.optimizer == 'Adam':
@@ -204,13 +202,13 @@ class SupervisedTraining:
         if self.method == 'classification':
             outputs = self.model(inputs)
         elif self.method == 'regression':
+            # Could this be a cause of inefficiency? 
             outputs = self.model(inputs).squeeze()
         return outputs
     
     def update_performance_metrics(self, performance_metrics, test_loss, train_loss):
         performance_metrics['test_loss'] = float(test_loss)
         performance_metrics['train_loss'] = float(train_loss)
-      #  return performance_metrics
 
     def train(self):
         epochs = self.config.epochs
@@ -218,20 +216,20 @@ class SupervisedTraining:
         list_parameters = list(self.model.parameters())
         optimizer = self.get_optimizer(list_parameters)
         scheduler = self.get_scheduler(optimizer)
+        criterion = self.get_loss_criterion()
 
         for epoch in tqdm(range(epochs)):
+
             epoch_train_loss = 0.0
             running_train_accuracy = 0.0
             self.model.train()
 
-            # loop over the batches in the train_loadaer 
             for i, (inputs, labels) in enumerate(self.train_loader):
                 
                 optimizer.zero_grad()
 
-                outputs = self.get_outputs(inputs)
+                outputs = self.get_outputs(inputs) 
 
-                criterion = self.get_loss_criterion()
                 loss = criterion(outputs, labels)
 
                 loss.backward()
@@ -245,6 +243,7 @@ class SupervisedTraining:
 
             
             epoch_train_loss /= len(self.train_loader)
+
             if self.method == 'classification':
                 running_train_accuracy /= len(self.train_loader)
 
@@ -257,7 +256,6 @@ class SupervisedTraining:
             epoch_test_loss = 0.0
             self.model.eval()
             running_test_accuracy = 0.0
-            running_precision = 0.0
 
             with torch.no_grad():
                 for i, (inputs, labels) in enumerate(self.test_loader):
@@ -268,18 +266,12 @@ class SupervisedTraining:
 
                     if self.method == 'classification':
                         running_test_accuracy += self.accuracy(outputs, labels)
-                    
-                    # if self.method == 'regression':
-                    #     running_precision += self.recall(outputs, labels)
-                        
+             
                 epoch_test_loss /= len(self.test_loader)
                 self.test_losses['loss_total'].append(epoch_test_loss)
 
                 if self.method == 'classification':
                     running_test_accuracy /= len(self.test_loader)
-
-                # if self.method == 'regression':
-                #     running_precision /= len(self.test_loader)
 
                 if self.config.verbose:
                     if epoch % 10 == 0:
@@ -287,8 +279,6 @@ class SupervisedTraining:
                         if self.method == 'classification':
                             print(f'Train Accuracy: {running_train_accuracy:2f}')
                             print(f'Test Accuracy: {running_test_accuracy:2f}')
-                        # if self.method == 'regression':
-                        #     print(f'Precision: {running_precision:2f}')
 
             if self.config.scheduler == 'ReduceLROnPlateau':
                 scheduler.step(epoch_test_loss)
@@ -297,18 +287,13 @@ class SupervisedTraining:
 
             if epoch >= patience:
                 if np.mean(self.test_losses['loss_total'][-patience:]) > np.mean(self.test_losses['loss_total'][-patience-1:-1]):
-                    # put recall here 
                     performance_metrics = self.get_performance_metrics()
                     self.update_performance_metrics(performance_metrics, epoch_test_loss, epoch_train_loss)
                     if self.config.verbose:
                         for key, value in performance_metrics.items():
                             print(f"{key}: {value:.4f}")
-                    return performance_metrics
-                
-            
-            # if self.config.verbose:
-            #     print(f"Epoch: {epoch}, Train Loss: {epoch_train_loss}, Test Loss: {epoch_test_loss}")
-
+                    return performance_metrics        
+        
         performance_metrics = self.get_performance_metrics()
         self.update_performance_metrics(performance_metrics, epoch_test_loss, epoch_train_loss)
         
@@ -316,4 +301,3 @@ class SupervisedTraining:
             for key, value in performance_metrics.items():
                 print(f"{key}: {value:.4f}")
             return performance_metrics
-        #return self.train_losses['loss_total'], self.test_losses['loss_total']

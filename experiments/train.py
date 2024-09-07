@@ -32,7 +32,7 @@ def main(args, yaml_file):
     elif config.method == 'regression':
         dynamics_dataset = DatasetForRegression(config, train = True)
 
-    dataset_for_error_metrics = DatasetForRegression(config, train = False)
+    dataset_for_performance_metrics = DatasetForRegression(config, train = False)
 
     dynamics_train_size = int(0.8*len(dynamics_dataset))
     dynamics_test_size = len(dynamics_dataset) - dynamics_train_size
@@ -40,7 +40,7 @@ def main(args, yaml_file):
     
     dynamics_train_loader = DataLoader(dynamics_train_dataset, batch_size=config.batch_size, shuffle=True)
     dynamics_test_loader = DataLoader(dynamics_test_dataset, batch_size=config.batch_size, shuffle=True)
-    error_metrics_loader = DataLoader(dataset_for_error_metrics, batch_size=dataset_for_error_metrics.__len__(), shuffle=False)
+    performance_metrics_loader = DataLoader(dataset_for_performance_metrics, batch_size=dataset_for_performance_metrics.__len__(), shuffle=False)
 
     if config.verbose:
         print("Train size: ", len(dynamics_train_dataset))
@@ -49,10 +49,10 @@ def main(args, yaml_file):
     loaders = {
         'train_dynamics': dynamics_train_loader,
         'test_dynamics': dynamics_test_loader,
-        'error_metrics': error_metrics_loader
+        'performance_metrics': performance_metrics_loader
     }
 
-    # save test_loss to a csv file
+    # save performance metrices to a result file
     with open(config.output_dir + 'result.csv', 'w', newline='') as file:
         writer = csv.writer(file)
 
