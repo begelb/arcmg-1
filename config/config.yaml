@@ -1,0 +1,24 @@
+parameters:
+  batch_size: 100
+  data_file: data/pendulum_1k
+  data_file_test: data/pendulum_1k
+  domain:
+  - - -3.14
+    - -6.28
+  - - 3.14
+    - 6.28
+  epochs: 10
+  input_dimension: 2
+  label_threshold: 0.99
+  learning_rate: 0.001
+  log_dir: output/pendulum_1k/logs/
+  model_dir: output/pendulum_1k/models/
+  name: pendulum
+  network_width: 64
+  output_dir: output/pendulum_1k/
+  patience: 100
+  verbose: True
+  num_attractors: 2
+  method: regression
+  
+
