@@ -93,7 +93,7 @@ def main(args, yaml_file):
 
 if __name__ == "__main__":
 
-# 
+#  This is actually a folder not a path? 
     yaml_file_path = os.getcwd() + "/output/pendulum_1k"
 
     only_plot = False
