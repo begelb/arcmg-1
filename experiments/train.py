@@ -36,8 +36,7 @@ def main(args, yaml_file):
 
     dynamics_train_size = int(0.8*len(dynamics_dataset))
     dynamics_test_size = len(dynamics_dataset) - dynamics_train_size
-    dynamics_train_dataset, dynamics_test_dataset = torch.utils.data.random_split(dynamics_dataset, [dynamics_train_size, dynamics_test_size])
-    
+    dynamics_train_dataset, dynamics_test_dataset = torch.utils.data.random_split(dynamics_dataset, [dynamics_train_size, dynamics_test_size], generator=torch.Generator().manual_seed(config.seed_data_split))
     dynamics_train_loader = DataLoader(dynamics_train_dataset, batch_size=config.batch_size, shuffle=True)
     dynamics_test_loader = DataLoader(dynamics_test_dataset, batch_size=config.batch_size, shuffle=True)
     performance_metrics_loader = DataLoader(dataset_for_performance_metrics, batch_size=dataset_for_performance_metrics.__len__(), shuffle=False)
@@ -56,6 +55,8 @@ def main(args, yaml_file):
     with open(config.output_dir + 'result.csv', 'w', newline='') as file:
         writer = csv.writer(file)
 
+        # Set random seed for the remaining torch processes
+        torch.manual_seed(config.seed_nn_init)
         trainer = SupervisedTraining(loaders, config)
 
         print(trainer.model)
