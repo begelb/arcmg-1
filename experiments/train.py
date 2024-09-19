@@ -2,6 +2,7 @@ from arcmg.supervised_training import SupervisedTraining
 from arcmg.config import Config
 from arcmg.data_for_supervised_learning import DatasetForClassification, DatasetForRegression
 from arcmg.plot import plot_classes, plot_loss, plot_classes_2D
+from arcmg.utils import grid_points2d
 from torch.utils.data import DataLoader
 import argparse
 import csv
@@ -9,6 +10,7 @@ import torch
 import yaml
 import os
 from torch import nn
+import pandas as pd
 
 torch.autograd.set_detect_anomaly(True)
 
@@ -91,6 +93,15 @@ def main(args, yaml_file):
         # writer.writerow(["class_set", "num_classes_found", "is_bistable", "final_train_loss", "final_test_loss"])
         # writer.writerow([class_set, num_classes_found, is_bistable(class_set), train_losses[-1], test_losses[-1]])
 
+    points = grid_points2d(config, 10)
+    trainer.model.eval()
+    with torch.no_grad():
+        outputs = trainer.model(points)
+    grid_predictions = torch.cat([points, outputs], dim=1)
+    grid_predictions_np = grid_predictions.numpy()
+    df = pd.DataFrame(grid_predictions_np, columns=['x', 'y', 'output'])
+    print(df)
+    df.to_csv(config.output_dir + 'grid_predictions.csv', index=False)
 
 if __name__ == "__main__":
 

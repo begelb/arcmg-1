@@ -1,6 +1,14 @@
 import numpy as np
 import torch
 
+def grid_points2d(config, pts_per_dim):
+    x = torch.linspace(config.domain[0][0], config.domain[0][1], pts_per_dim)
+    y = torch.linspace(config.domain[1][0], config.domain[1][1], pts_per_dim)
+
+    grid_x, grid_y = torch.meshgrid(x, y, indexing='ij')
+    points = torch.stack([grid_x, grid_y], dim = -1).reshape(-1, 2)
+    return points
+
 def rampfn_special_data_sample(regions, total_num_pts):
     pts_per_region = total_num_pts//len(regions)
     total_sample = np.empty(0)
